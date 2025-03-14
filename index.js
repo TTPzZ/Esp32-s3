@@ -28,7 +28,7 @@ connectDB();
 // Kiểm tra kết nối định kỳ (mỗi 1 phút)
 setInterval(async () => {
   try {
-    await client.db('esp32_db').command({ ping: 1 });
+    await client.db('HermitHome').command({ ping: 1 });
     isDbConnected = true;
   } catch (error) {
     isDbConnected = false;
@@ -38,10 +38,10 @@ setInterval(async () => {
 }, 60000);
 
 const db = client.db('HermitHome');
-const dataCollection = db.collection('sensor_data');
-const settingsCollection = db.collection('settings');
+const currentStatsCollection = db.collection('current_stats'); // Thay sensor_data thành current_stats
+const thresholdsCollection = db.collection('thresholds'); // Thay settings thành thresholds
 
-// API ghi dữ liệu từ ESP32
+// API ghi dữ liệu từ ESP32 vào current_stats
 app.post('/write', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
@@ -51,7 +51,7 @@ app.post('/write', async (req, res) => {
     return res.status(400).send("Missing required fields");
   }
   try {
-    await dataCollection.insertOne({
+    await currentStatsCollection.insertOne({
       temperature: parseFloat(temperature),
       humidity: parseFloat(humidity),
       light: parseInt(light),
@@ -64,14 +64,14 @@ app.post('/write', async (req, res) => {
   }
 });
 
-// API đọc thiết lập cho ESP32
+// API đọc thiết lập từ thresholds cho ESP32
 app.get('/read', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
   }
   try {
-    const settings = await settingsCollection.findOne({ type: "limits" });
-    if (!settings) {
+    const thresholds = await thresholdsCollection.findOne({ type: "limits" });
+    if (!thresholds) {
       return res.json({
         temp_min: 20,
         temp_max: 30,
@@ -81,10 +81,10 @@ app.get('/read', async (req, res) => {
         light_max: 1000
       });
     }
-    res.json(settings);
+    res.json(thresholds);
   } catch (error) {
-    console.error("Error reading settings:", error);
-    res.status(500).send("Error reading settings");
+    console.error("Error reading thresholds:", error);
+    res.status(500).send("Error reading thresholds");
   }
 });
 
