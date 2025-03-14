@@ -41,27 +41,67 @@ const currentStatsCollection = db.collection('current_stats');
 const thresholdsCollection = db.collection('thresholds');
 
 // API ghi dữ liệu từ ESP32 vào current_stats
+// app.post('/write', async (req, res) => {
+//   if (!isDbConnected) {
+//     return res.status(503).send("Database not connected");
+//   }
+//   const { temperature, humidity, light } = req.body;
+//   if (!temperature || !humidity || !light) {
+//     return res.status(400).send("Missing required fields");
+//   }
+//   try {
+//     await currentStatsCollection.insertOne({
+//       temperature: parseFloat(temperature),
+//       humidity: parseFloat(humidity),
+//       light: parseInt(light),
+//       timestamp: new Date()
+//     });
+//     res.status(200).send("Data saved");
+//   } catch (error) {
+//     console.error("Error saving data:", error);
+//     res.status(500).send("Error saving data");
+//   }
+// });
+
 app.post('/write', async (req, res) => {
-  if (!isDbConnected) {
-    return res.status(503).send("Database not connected");
-  }
-  const { temperature, humidity, light } = req.body;
-  if (!temperature || !humidity || !light) {
-    return res.status(400).send("Missing required fields");
-  }
-  try {
-    await currentStatsCollection.insertOne({
-      temperature: parseFloat(temperature),
-      humidity: parseFloat(humidity),
-      light: parseInt(light),
-      timestamp: new Date()
-    });
-    res.status(200).send("Data saved");
-  } catch (error) {
-    console.error("Error saving data:", error);
-    res.status(500).send("Error saving data");
-  }
-});
+    if (!isDbConnected) {
+      return res.status(503).send("Database not connected");
+    }
+    const { userId, temperature, humidity, light } = req.body;
+    console.log("Received data:", { userId, temperature, humidity, light });
+  
+    // Kiểm tra dữ liệu đầu vào
+    if (!userId || !temperature || !humidity || !light) {
+      return res.status(400).send("Missing required fields: userId, temperature, humidity, and light are required");
+    }
+  
+    try {
+      // Cập nhật hoặc tạo mới tài liệu dựa trên userId
+      const result = await currentStatsCollection.updateOne(
+        { userId: userId }, // Tìm tài liệu theo userId
+        {
+          $set: {
+            temperature: parseFloat(temperature),
+            humidity: parseFloat(humidity),
+            light: parseInt(light),
+            timestamp: new Date()
+          }
+        },
+        { upsert: true } // Nếu không tìm thấy tài liệu, tạo mới
+      );
+  
+      if (result.matchedCount > 0 || result.upsertedCount > 0) {
+        console.log(`Data updated for userId: ${userId}`);
+        res.status(200).send("Data updated");
+      } else {
+        console.log("No data updated or inserted");
+        res.status(500).send("No data updated or inserted");
+      }
+    } catch (error) {
+      console.error("Error updating data:", error.message);
+      res.status(500).send("Error updating data: " + error.message);
+    }
+  });
 
 // API đọc thiết lập từ thresholds cho ESP32
 app.get('/read', async (req, res) => {
