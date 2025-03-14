@@ -37,7 +37,7 @@ setInterval(async () => {
   }
 }, 60000);
 
-const db = client.db('esp32_db');
+const db = client.db('HermitHome');
 const dataCollection = db.collection('sensor_data');
 const settingsCollection = db.collection('settings');
 
