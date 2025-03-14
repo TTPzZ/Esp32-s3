@@ -3,11 +3,10 @@ const { MongoClient } = require('mongodb');
 const app = express();
 app.use(express.json());
 
-// Sử dụng biến môi trường MONGODB_URI, fallback là chuỗi rỗng (dùng để test cục bộ)
 const uri = process.env.MONGODB_URI || "";
 if (!uri) {
   console.error("MONGODB_URI is not set. Please configure it in environment variables.");
-  process.exit(1); // Thoát nếu không có URI
+  process.exit(1);
 }
 const client = new MongoClient(uri);
 let isDbConnected = false;
@@ -38,8 +37,8 @@ setInterval(async () => {
 }, 60000);
 
 const db = client.db('HermitHome');
-const currentStatsCollection = db.collection('current_stats'); // Thay sensor_data thành current_stats
-const thresholdsCollection = db.collection('thresholds'); // Thay settings thành thresholds
+const currentStatsCollection = db.collection('current_stats');
+const thresholdsCollection = db.collection('thresholds');
 
 // API ghi dữ liệu từ ESP32 vào current_stats
 app.post('/write', async (req, res) => {
@@ -93,5 +92,6 @@ app.get('/status', (req, res) => {
   res.json({ status: "Server running", dbConnected: isDbConnected });
 });
 
-const PORT = process.env.PORT || 3000;
+// Lắng nghe trên port do Render cung cấp
+const PORT = process.env.PORT;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

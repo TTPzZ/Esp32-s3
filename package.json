@@ -4,10 +4,11 @@
     "description": "Server for ESP32 to connect with MongoDB Atlas",
     "main": "index.js",
     "scripts": {
-      "start": "node index.js"
+        "start": "node index.js"
     },
     "dependencies": {
-      "express": "^4.18.2",
-      "mongodb": "^5.9.0"
+        "dotenv": "^16.4.7",
+        "express": "^4.18.2",
+        "mongodb": "^5.9.0"
     }
-  }
+}
