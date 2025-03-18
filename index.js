@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { MongoClient } = require('mongodb');
 const WebSocket = require('ws');
+const moment = require('moment-timezone'); // Thêm moment-timezone
 
 const app = express();
 app.use(express.json());
@@ -97,10 +98,10 @@ app.post('/write', async (req, res) => {
   }
 
   try {
-    const timestamp = new Date();
-    const isoTimestamp = timestamp.toISOString(); // Ví dụ: "2025-03-18T02:39:59.721Z"
-    const date = timestamp.toISOString().split('T')[0]; // Lấy ngày: "2025-03-18"
-    const time = timestamp.toTimeString().split(' ')[0]; // Lấy giờ: "09:39:59" (cắt bỏ múi giờ)
+    const timestamp = moment().tz('Asia/Ho_Chi_Minh'); // Sử dụng múi giờ Việt Nam (UTC+7)
+    const isoTimestamp = timestamp.toISOString(); // Ví dụ: "2025-03-18T09:39:59.721Z" (UTC+7)
+    const date = timestamp.format('YYYY-MM-DD'); // Ví dụ: "2025-03-18"
+    const time = timestamp.format('HH:mm'); // Ví dụ: "09:39" (chỉ giờ và phút)
 
     const currentStatsResult = await currentStatsCollection.updateOne(
       { userId },
@@ -118,8 +119,8 @@ app.post('/write', async (req, res) => {
 
     await statsCollection.insertOne({
       userId,
-      date, // Thêm trường date
-      time, // Thêm trường time
+      date, // Thêm trường date theo múi giờ Việt Nam
+      time, // Thêm trường time theo múi giờ Việt Nam
       temperature: parseFloat(temperature),
       humidity: parseFloat(humidity),
       light: parseInt(light),
