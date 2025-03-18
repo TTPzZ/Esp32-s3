@@ -76,7 +76,6 @@ async function watchThresholds() {
           maxHumidity: change.fullDocument.maxHumidity,
           minLight: change.fullDocument.minLight,
           maxLight: change.fullDocument.maxLight
-          // Loại bỏ timestamp khỏi thông báo WebSocket
         }));
         console.log(`Thresholds updated and sent to userId: ${userId}`);
       }
@@ -99,6 +98,9 @@ app.post('/write', async (req, res) => {
 
   try {
     const timestamp = new Date();
+    const isoTimestamp = timestamp.toISOString(); // Ví dụ: "2025-03-18T02:39:59.721Z"
+    const date = timestamp.toISOString().split('T')[0]; // Lấy ngày: "2025-03-18"
+    const time = timestamp.toTimeString().split(' ')[0]; // Lấy giờ: "09:39:59" (cắt bỏ múi giờ)
 
     const currentStatsResult = await currentStatsCollection.updateOne(
       { userId },
@@ -108,7 +110,7 @@ app.post('/write', async (req, res) => {
           temperature: parseFloat(temperature),
           humidity: parseFloat(humidity),
           light: parseInt(light),
-          timestamp
+          timestamp: isoTimestamp // Lưu timestamp ISO
         }
       },
       { upsert: true }
@@ -116,10 +118,12 @@ app.post('/write', async (req, res) => {
 
     await statsCollection.insertOne({
       userId,
+      date, // Thêm trường date
+      time, // Thêm trường time
       temperature: parseFloat(temperature),
       humidity: parseFloat(humidity),
       light: parseInt(light),
-      timestamp
+      timestamp: isoTimestamp // Lưu timestamp ISO
     });
 
     if (currentStatsResult.matchedCount > 0 || currentStatsResult.upsertedCount > 0) {
@@ -152,7 +156,6 @@ app.get('/read/:userId', async (req, res) => {
         maxHumidity: 80,
         minLight: 100,
         maxLight: 1000
-        // Loại bỏ timestamp khỏi defaultThresholds
       };
       await thresholdsCollection.insertOne(defaultThresholds);
       return res.json({
@@ -162,7 +165,6 @@ app.get('/read/:userId', async (req, res) => {
         maxHumidity: defaultThresholds.maxHumidity,
         minLight: defaultThresholds.minLight,
         maxLight: defaultThresholds.maxLight
-        // Loại bỏ timestamp khỏi response
       });
     }
     res.json({
@@ -172,7 +174,6 @@ app.get('/read/:userId', async (req, res) => {
       maxHumidity: thresholds.maxHumidity,
       minLight: thresholds.minLight,
       maxLight: thresholds.maxLight
-      // Loại bỏ timestamp khỏi response
     });
   } catch (error) {
     console.error("Error reading thresholds:", error);
