@@ -41,7 +41,7 @@ setInterval(async () => {
 const db = client.db('HermitHome');
 const currentStatsCollection = db.collection('current_stats');
 const thresholdsCollection = db.collection('thresholds');
-const sensorsCollection = db.collection('sensors');
+const statsCollection = db.collection('stats'); // Sử dụng bảng stats thay cho sensors
 
 // Tạo WebSocket server
 const wss = new WebSocket.Server({ port: 8080 });
@@ -99,6 +99,7 @@ app.post('/write', async (req, res) => {
   try {
     const timestamp = new Date();
 
+    // Cập nhật hoặc chèn mới vào current_stats
     const currentStatsResult = await currentStatsCollection.updateOne(
       { userId },
       {
@@ -113,7 +114,8 @@ app.post('/write', async (req, res) => {
       { upsert: true }
     );
 
-    await sensorsCollection.insertOne({
+    // Ghi thêm vào stats (lịch sử dữ liệu)
+    await statsCollection.insertOne({
       userId,
       temperature: parseFloat(temperature),
       humidity: parseFloat(humidity),
@@ -134,7 +136,7 @@ app.post('/write', async (req, res) => {
   }
 });
 
-// API đọc ngưỡng (cho lần đầu ESP32 kết nối)
+// API đọc ngưỡng
 app.get('/read/:userId', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
@@ -168,7 +170,6 @@ app.get('/read/:userId', async (req, res) => {
   }
 });
 
-// Xử lý khi server dừng
 process.on('SIGINT', async () => {
   await client.close();
   console.log("MongoDB connection closed");
