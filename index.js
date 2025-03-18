@@ -41,7 +41,7 @@ setInterval(async () => {
 const db = client.db('HermitHome');
 const currentStatsCollection = db.collection('current_stats');
 const thresholdsCollection = db.collection('thresholds');
-const statsCollection = db.collection('stats'); // Sử dụng bảng stats thay cho sensors
+const statsCollection = db.collection('stats');
 
 // Tạo WebSocket server
 const wss = new WebSocket.Server({ port: 8080 });
@@ -75,7 +75,8 @@ async function watchThresholds() {
           minHumidity: change.fullDocument.minHumidity,
           maxHumidity: change.fullDocument.maxHumidity,
           minLight: change.fullDocument.minLight,
-          maxLight: change.fullDocument.maxLight,
+          maxLight: change.fullDocument.maxLight
+          // Loại bỏ timestamp khỏi thông báo WebSocket
         }));
         console.log(`Thresholds updated and sent to userId: ${userId}`);
       }
@@ -99,7 +100,6 @@ app.post('/write', async (req, res) => {
   try {
     const timestamp = new Date();
 
-    // Cập nhật hoặc chèn mới vào current_stats
     const currentStatsResult = await currentStatsCollection.updateOne(
       { userId },
       {
@@ -114,7 +114,6 @@ app.post('/write', async (req, res) => {
       { upsert: true }
     );
 
-    // Ghi thêm vào stats (lịch sử dữ liệu)
     await statsCollection.insertOne({
       userId,
       temperature: parseFloat(temperature),
@@ -146,15 +145,25 @@ app.get('/read/:userId', async (req, res) => {
     const thresholds = await thresholdsCollection.findOne({ userId });
     if (!thresholds) {
       const defaultThresholds = {
+        userId,
         minTemperature: 20,
         maxTemperature: 30,
         minHumidity: 40,
         maxHumidity: 80,
         minLight: 100,
         maxLight: 1000
+        // Loại bỏ timestamp khỏi defaultThresholds
       };
-      await thresholdsCollection.insertOne({ userId, ...defaultThresholds });
-      return res.json(defaultThresholds);
+      await thresholdsCollection.insertOne(defaultThresholds);
+      return res.json({
+        minTemperature: defaultThresholds.minTemperature,
+        maxTemperature: defaultThresholds.maxTemperature,
+        minHumidity: defaultThresholds.minHumidity,
+        maxHumidity: defaultThresholds.maxHumidity,
+        minLight: defaultThresholds.minLight,
+        maxLight: defaultThresholds.maxLight
+        // Loại bỏ timestamp khỏi response
+      });
     }
     res.json({
       minTemperature: thresholds.minTemperature,
@@ -163,6 +172,7 @@ app.get('/read/:userId', async (req, res) => {
       maxHumidity: thresholds.maxHumidity,
       minLight: thresholds.minLight,
       maxLight: thresholds.maxLight
+      // Loại bỏ timestamp khỏi response
     });
   } catch (error) {
     console.error("Error reading thresholds:", error);
