@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { MongoClient } = require('mongodb');
 const WebSocket = require('ws');
-const moment = require('moment-timezone'); // Thêm moment-timezone
+const moment = require('moment-timezone');
 
 const app = express();
 app.use(express.json());
@@ -76,9 +76,12 @@ async function watchThresholds() {
           minHumidity: change.fullDocument.minHumidity,
           maxHumidity: change.fullDocument.maxHumidity,
           minLight: change.fullDocument.minLight,
-          maxLight: change.fullDocument.maxLight
+          maxLight: change.fullDocument.maxLight,
+          heaterEnabled: change.fullDocument.heaterEnabled, // Thêm trạng thái bật/tắt
+          fanEnabled: change.fullDocument.fanEnabled,
+          mistEnabled: change.fullDocument.mistEnabled
         }));
-        console.log(`Thresholds updated and sent to userId: ${userId}`);
+        console.log(`Thresholds and device states updated and sent to userId: ${userId}`);
       }
     }
   }
@@ -98,10 +101,10 @@ app.post('/write', async (req, res) => {
   }
 
   try {
-    const timestamp = moment().tz('Asia/Ho_Chi_Minh'); // Sử dụng múi giờ Việt Nam (UTC+7)
-    const isoTimestamp = timestamp.toISOString(); // Ví dụ: "2025-03-18T09:39:59.721Z" (UTC+7)
-    const date = timestamp.format('YYYY-MM-DD'); // Ví dụ: "2025-03-18"
-    const time = timestamp.format('HH:mm'); // Ví dụ: "09:39" (chỉ giờ và phút)
+    const timestamp = moment().tz('Asia/Ho_Chi_Minh');
+    const isoTimestamp = timestamp.toISOString();
+    const date = timestamp.format('YYYY-MM-DD');
+    const time = timestamp.format('HH:mm');
 
     const currentStatsResult = await currentStatsCollection.updateOne(
       { userId },
@@ -111,7 +114,7 @@ app.post('/write', async (req, res) => {
           temperature: parseFloat(temperature),
           humidity: parseFloat(humidity),
           light: parseInt(light),
-          timestamp: isoTimestamp // Lưu timestamp ISO
+          timestamp: isoTimestamp
         }
       },
       { upsert: true }
@@ -119,12 +122,12 @@ app.post('/write', async (req, res) => {
 
     await statsCollection.insertOne({
       userId,
-      date, // Thêm trường date theo múi giờ Việt Nam
-      time, // Thêm trường time theo múi giờ Việt Nam
+      date,
+      time,
       temperature: parseFloat(temperature),
       humidity: parseFloat(humidity),
       light: parseInt(light),
-      timestamp: isoTimestamp // Lưu timestamp ISO
+      timestamp: isoTimestamp
     });
 
     if (currentStatsResult.matchedCount > 0 || currentStatsResult.upsertedCount > 0) {
@@ -140,7 +143,7 @@ app.post('/write', async (req, res) => {
   }
 });
 
-// API đọc ngưỡng
+// API đọc ngưỡng và trạng thái bật/tắt
 app.get('/read/:userId', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
@@ -156,7 +159,10 @@ app.get('/read/:userId', async (req, res) => {
         minHumidity: 40,
         maxHumidity: 80,
         minLight: 100,
-        maxLight: 1000
+        maxLight: 1000,
+        heaterEnabled: true, // Giá trị mặc định
+        fanEnabled: true,
+        mistEnabled: true
       };
       await thresholdsCollection.insertOne(defaultThresholds);
       return res.json({
@@ -165,7 +171,10 @@ app.get('/read/:userId', async (req, res) => {
         minHumidity: defaultThresholds.minHumidity,
         maxHumidity: defaultThresholds.maxHumidity,
         minLight: defaultThresholds.minLight,
-        maxLight: defaultThresholds.maxLight
+        maxLight: defaultThresholds.maxLight,
+        heaterEnabled: defaultThresholds.heaterEnabled,
+        fanEnabled: defaultThresholds.fanEnabled,
+        mistEnabled: defaultThresholds.mistEnabled
       });
     }
     res.json({
@@ -174,12 +183,67 @@ app.get('/read/:userId', async (req, res) => {
       minHumidity: thresholds.minHumidity,
       maxHumidity: thresholds.maxHumidity,
       minLight: thresholds.minLight,
-      maxLight: thresholds.maxLight
+      maxLight: thresholds.maxLight,
+      heaterEnabled: thresholds.heaterEnabled !== undefined ? thresholds.heaterEnabled : true, // Đảm bảo có giá trị mặc định
+      fanEnabled: thresholds.fanEnabled !== undefined ? thresholds.fanEnabled : true,
+      mistEnabled: thresholds.mistEnabled !== undefined ? thresholds.mistEnabled : true
     });
   } catch (error) {
     console.error("Error reading thresholds:", error);
     res.status(500).send("Error reading thresholds");
   }
+});
+
+// API cập nhật trạng thái bật/tắt từ app
+app.post('/update/:userId', async (req, res) => {
+  if (!isDbConnected) {
+    return res.status(503).send("Database not connected");
+  }
+  const userId = req.params.userId;
+  const { heaterEnabled, fanEnabled, mistEnabled } = req.body;
+
+  // Kiểm tra xem các trường có được gửi hay không
+  if (heaterEnabled === undefined && fanEnabled === undefined && mistEnabled === undefined) {
+    return res.status(400).send("At least one field (heaterEnabled, fanEnabled, mistEnabled) is required");
+  }
+
+  try {
+    const updateFields = {};
+    if (heaterEnabled !== undefined) updateFields.heaterEnabled = heaterEnabled;
+    if (fanEnabled !== undefined) updateFields.fanEnabled = fanEnabled;
+    if (mistEnabled !== undefined) updateFields.mistEnabled = mistEnabled;
+
+    const result = await thresholdsCollection.updateOne(
+      { userId },
+      { $set: updateFields },
+      { upsert: true }
+    );
+
+    if (result.matchedCount > 0 || result.upsertedCount > 0) {
+      const updatedThresholds = await thresholdsCollection.findOne({ userId });
+      res.status(200).json({
+        minTemperature: updatedThresholds.minTemperature,
+        maxTemperature: updatedThresholds.maxTemperature,
+        minHumidity: updatedThresholds.minHumidity,
+        maxHumidity: updatedThresholds.maxHumidity,
+        minLight: updatedThresholds.minLight,
+        maxLight: updatedThresholds.maxLight,
+        heaterEnabled: updatedThresholds.heaterEnabled !== undefined ? updatedThresholds.heaterEnabled : true,
+        fanEnabled: updatedThresholds.fanEnabled !== undefined ? updatedThresholds.fanEnabled : true,
+        mistEnabled: updatedThresholds.mistEnabled !== undefined ? updatedThresholds.mistEnabled : true
+      });
+    } else {
+      res.status(500).send("Failed to update device states");
+    }
+  } catch (error) {
+    console.error("Error updating device states:", error);
+    res.status(500).send("Error updating device states");
+  }
+});
+
+// Endpoint để giữ server sống
+app.get('/ping', (req, res) => {
+  res.status(200).send('Server is alive');
 });
 
 process.on('SIGINT', async () => {
