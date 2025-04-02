@@ -79,7 +79,10 @@ async function watchThresholds() {
           maxLight: change.fullDocument.maxLight,
           heaterEnabled: change.fullDocument.heaterEnabled,
           fanEnabled: change.fullDocument.fanEnabled,
-          mistEnabled: change.fullDocument.mistEnabled
+          mistEnabled: change.fullDocument.mistEnabled,
+          lightEnabled: change.fullDocument.lightEnabled, // Thêm trạng thái đèn
+          lightOnHour: change.fullDocument.lightOnHour,   // Thêm giờ bật đèn
+          lightOffHour: change.fullDocument.lightOffHour  // Thêm giờ tắt đèn
         }));
         console.log(`Thresholds and device states updated and sent to userId: ${userId}`);
       }
@@ -143,7 +146,7 @@ app.post('/write', async (req, res) => {
   }
 });
 
-// API đọc ngưỡng, trạng thái bật/tắt và thời gian hiện tại
+// API đọc ngưỡng, trạng thái bật/tắt, thời gian hiện tại và thời gian bật/tắt đèn
 app.get('/read/:userId', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
@@ -154,7 +157,7 @@ app.get('/read/:userId', async (req, res) => {
 
     // Lấy thời gian hiện tại theo múi giờ Việt Nam
     const timestamp = moment().tz('Asia/Ho_Chi_Minh');
-    const isoTimestamp = timestamp.toISOString(); // Định dạng ISO: "2025-04-01T09:30:45.123+07:00"
+    const isoTimestamp = timestamp.toISOString();
 
     if (!thresholds) {
       const defaultThresholds = {
@@ -167,7 +170,10 @@ app.get('/read/:userId', async (req, res) => {
         maxLight: 1000,
         heaterEnabled: true,
         fanEnabled: true,
-        mistEnabled: true
+        mistEnabled: true,
+        lightEnabled: true,  // Mặc định đèn được bật
+        lightOnHour: 9,      // Mặc định bật lúc 9:00
+        lightOffHour: 21     // Mặc định tắt lúc 21:00
       };
       await thresholdsCollection.insertOne(defaultThresholds);
       return res.json({
@@ -180,7 +186,10 @@ app.get('/read/:userId', async (req, res) => {
         heaterEnabled: defaultThresholds.heaterEnabled,
         fanEnabled: defaultThresholds.fanEnabled,
         mistEnabled: defaultThresholds.mistEnabled,
-        currentTime: isoTimestamp // Thêm thời gian hiện tại
+        lightEnabled: defaultThresholds.lightEnabled,
+        lightOnHour: defaultThresholds.lightOnHour,
+        lightOffHour: defaultThresholds.lightOffHour,
+        currentTime: isoTimestamp
       });
     }
     res.json({
@@ -193,7 +202,10 @@ app.get('/read/:userId', async (req, res) => {
       heaterEnabled: thresholds.heaterEnabled !== undefined ? thresholds.heaterEnabled : true,
       fanEnabled: thresholds.fanEnabled !== undefined ? thresholds.fanEnabled : true,
       mistEnabled: thresholds.mistEnabled !== undefined ? thresholds.mistEnabled : true,
-      currentTime: isoTimestamp // Thêm thời gian hiện tại
+      lightEnabled: thresholds.lightEnabled !== undefined ? thresholds.lightEnabled : true,
+      lightOnHour: thresholds.lightOnHour !== undefined ? thresholds.lightOnHour : 9,
+      lightOffHour: thresholds.lightOffHour !== undefined ? thresholds.lightOffHour : 21,
+      currentTime: isoTimestamp
     });
   } catch (error) {
     console.error("Error reading thresholds:", error);
@@ -201,17 +213,18 @@ app.get('/read/:userId', async (req, res) => {
   }
 });
 
-// API cập nhật trạng thái bật/tắt từ app
+// API cập nhật trạng thái bật/tắt và thời gian bật/tắt đèn từ app
 app.post('/update/:userId', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
   }
   const userId = req.params.userId;
-  const { heaterEnabled, fanEnabled, mistEnabled } = req.body;
+  const { heaterEnabled, fanEnabled, mistEnabled, lightEnabled, lightOnHour, lightOffHour } = req.body;
 
-  // Kiểm tra xem các trường có được gửi hay không
-  if (heaterEnabled === undefined && fanEnabled === undefined && mistEnabled === undefined) {
-    return res.status(400).send("At least one field (heaterEnabled, fanEnabled, mistEnabled) is required");
+  // Kiểm tra xem có ít nhất một trường được gửi hay không
+  if (heaterEnabled === undefined && fanEnabled === undefined && mistEnabled === undefined &&
+      lightEnabled === undefined && lightOnHour === undefined && lightOffHour === undefined) {
+    return res.status(400).send("At least one field (heaterEnabled, fanEnabled, mistEnabled, lightEnabled, lightOnHour, lightOffHour) is required");
   }
 
   try {
@@ -219,6 +232,23 @@ app.post('/update/:userId', async (req, res) => {
     if (heaterEnabled !== undefined) updateFields.heaterEnabled = heaterEnabled;
     if (fanEnabled !== undefined) updateFields.fanEnabled = fanEnabled;
     if (mistEnabled !== undefined) updateFields.mistEnabled = mistEnabled;
+    if (lightEnabled !== undefined) updateFields.lightEnabled = lightEnabled;
+    if (lightOnHour !== undefined) {
+      const onHour = parseInt(lightOnHour);
+      if (onHour >= 0 && onHour <= 23) {
+        updateFields.lightOnHour = onHour;
+      } else {
+        return res.status(400).send("lightOnHour must be between 0 and 23");
+      }
+    }
+    if (lightOffHour !== undefined) {
+      const offHour = parseInt(lightOffHour);
+      if (offHour >= 0 && offHour <= 23) {
+        updateFields.lightOffHour = offHour;
+      } else {
+        return res.status(400).send("lightOffHour must be between 0 and 23");
+      }
+    }
 
     const result = await thresholdsCollection.updateOne(
       { userId },
@@ -237,7 +267,10 @@ app.post('/update/:userId', async (req, res) => {
         maxLight: updatedThresholds.maxLight,
         heaterEnabled: updatedThresholds.heaterEnabled !== undefined ? updatedThresholds.heaterEnabled : true,
         fanEnabled: updatedThresholds.fanEnabled !== undefined ? updatedThresholds.fanEnabled : true,
-        mistEnabled: updatedThresholds.mistEnabled !== undefined ? updatedThresholds.mistEnabled : true
+        mistEnabled: updatedThresholds.mistEnabled !== undefined ? updatedThresholds.mistEnabled : true,
+        lightEnabled: updatedThresholds.lightEnabled !== undefined ? updatedThresholds.lightEnabled : true,
+        lightOnHour: updatedThresholds.lightOnHour !== undefined ? updatedThresholds.lightOnHour : 9,
+        lightOffHour: updatedThresholds.lightOffHour !== undefined ? updatedThresholds.lightOffHour : 21
       });
     } else {
       res.status(500).send("Failed to update device states");
