@@ -77,7 +77,7 @@ async function watchThresholds() {
           maxHumidity: change.fullDocument.maxHumidity,
           minLight: change.fullDocument.minLight,
           maxLight: change.fullDocument.maxLight,
-          heaterEnabled: change.fullDocument.heaterEnabled, // Thêm trạng thái bật/tắt
+          heaterEnabled: change.fullDocument.heaterEnabled,
           fanEnabled: change.fullDocument.fanEnabled,
           mistEnabled: change.fullDocument.mistEnabled
         }));
@@ -143,7 +143,7 @@ app.post('/write', async (req, res) => {
   }
 });
 
-// API đọc ngưỡng và trạng thái bật/tắt
+// API đọc ngưỡng, trạng thái bật/tắt và thời gian hiện tại
 app.get('/read/:userId', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
@@ -151,6 +151,11 @@ app.get('/read/:userId', async (req, res) => {
   try {
     const userId = req.params.userId;
     const thresholds = await thresholdsCollection.findOne({ userId });
+
+    // Lấy thời gian hiện tại theo múi giờ Việt Nam
+    const timestamp = moment().tz('Asia/Ho_Chi_Minh');
+    const isoTimestamp = timestamp.toISOString(); // Định dạng ISO: "2025-04-01T09:30:45.123+07:00"
+
     if (!thresholds) {
       const defaultThresholds = {
         userId,
@@ -160,7 +165,7 @@ app.get('/read/:userId', async (req, res) => {
         maxHumidity: 80,
         minLight: 100,
         maxLight: 1000,
-        heaterEnabled: true, // Giá trị mặc định
+        heaterEnabled: true,
         fanEnabled: true,
         mistEnabled: true
       };
@@ -174,7 +179,8 @@ app.get('/read/:userId', async (req, res) => {
         maxLight: defaultThresholds.maxLight,
         heaterEnabled: defaultThresholds.heaterEnabled,
         fanEnabled: defaultThresholds.fanEnabled,
-        mistEnabled: defaultThresholds.mistEnabled
+        mistEnabled: defaultThresholds.mistEnabled,
+        currentTime: isoTimestamp // Thêm thời gian hiện tại
       });
     }
     res.json({
@@ -184,9 +190,10 @@ app.get('/read/:userId', async (req, res) => {
       maxHumidity: thresholds.maxHumidity,
       minLight: thresholds.minLight,
       maxLight: thresholds.maxLight,
-      heaterEnabled: thresholds.heaterEnabled !== undefined ? thresholds.heaterEnabled : true, // Đảm bảo có giá trị mặc định
+      heaterEnabled: thresholds.heaterEnabled !== undefined ? thresholds.heaterEnabled : true,
       fanEnabled: thresholds.fanEnabled !== undefined ? thresholds.fanEnabled : true,
-      mistEnabled: thresholds.mistEnabled !== undefined ? thresholds.mistEnabled : true
+      mistEnabled: thresholds.mistEnabled !== undefined ? thresholds.mistEnabled : true,
+      currentTime: isoTimestamp // Thêm thời gian hiện tại
     });
   } catch (error) {
     console.error("Error reading thresholds:", error);
