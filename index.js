@@ -4,6 +4,9 @@ const { MongoClient } = require('mongodb');
 const WebSocket = require('ws');
 const moment = require('moment-timezone');
 
+// Thiết lập múi giờ mặc định là Việt Nam
+moment.tz.setDefault('Asia/Ho_Chi_Minh');
+
 const app = express();
 app.use(express.json());
 
@@ -44,6 +47,12 @@ const currentStatsCollection = db.collection('current_stats');
 const thresholdsCollection = db.collection('thresholds');
 const statsCollection = db.collection('stats');
 
+// Log thời gian để debug
+setInterval(() => {
+  console.log('System time:', new Date().toISOString());
+  console.log('Vietnam time:', moment().format('YYYY-MM-DD HH:mm:ss'));
+}, 60000);
+
 // Tạo WebSocket server
 const wss = new WebSocket.Server({ port: 8080 });
 const clients = new Map();
@@ -80,9 +89,9 @@ async function watchThresholds() {
           heaterEnabled: change.fullDocument.heaterEnabled,
           fanEnabled: change.fullDocument.fanEnabled,
           mistEnabled: change.fullDocument.mistEnabled,
-          lightEnabled: change.fullDocument.lightEnabled, // Thêm trạng thái đèn
-          lightOnHour: change.fullDocument.lightOnHour,   // Thêm giờ bật đèn
-          lightOffHour: change.fullDocument.lightOffHour  // Thêm giờ tắt đèn
+          lightEnabled: change.fullDocument.lightEnabled,
+          lightOnHour: change.fullDocument.lightOnHour,
+          lightOffHour: change.fullDocument.lightOffHour
         }));
         console.log(`Thresholds and device states updated and sent to userId: ${userId}`);
       }
@@ -104,7 +113,7 @@ app.post('/write', async (req, res) => {
   }
 
   try {
-    const timestamp = moment().tz('Asia/Ho_Chi_Minh');
+    const timestamp = moment();
     const isoTimestamp = timestamp.toISOString();
     const date = timestamp.format('YYYY-MM-DD');
     const time = timestamp.format('HH:mm');
@@ -156,7 +165,7 @@ app.get('/read/:userId', async (req, res) => {
     const thresholds = await thresholdsCollection.findOne({ userId });
 
     // Lấy thời gian hiện tại theo múi giờ Việt Nam
-    const timestamp = moment().tz('Asia/Ho_Chi_Minh');
+    const timestamp = moment();
     const isoTimestamp = timestamp.toISOString();
 
     if (!thresholds) {
@@ -171,9 +180,9 @@ app.get('/read/:userId', async (req, res) => {
         heaterEnabled: true,
         fanEnabled: true,
         mistEnabled: true,
-        lightEnabled: true,  // Mặc định đèn được bật
-        lightOnHour: 9,      // Mặc định bật lúc 9:00
-        lightOffHour: 21     // Mặc định tắt lúc 21:00
+        lightEnabled: true,
+        lightOnHour: 9,
+        lightOffHour: 21
       };
       await thresholdsCollection.insertOne(defaultThresholds);
       return res.json({
@@ -221,7 +230,6 @@ app.post('/update/:userId', async (req, res) => {
   const userId = req.params.userId;
   const { heaterEnabled, fanEnabled, mistEnabled, lightEnabled, lightOnHour, lightOffHour } = req.body;
 
-  // Kiểm tra xem có ít nhất một trường được gửi hay không
   if (heaterEnabled === undefined && fanEnabled === undefined && mistEnabled === undefined &&
       lightEnabled === undefined && lightOnHour === undefined && lightOffHour === undefined) {
     return res.status(400).send("At least one field (heaterEnabled, fanEnabled, mistEnabled, lightEnabled, lightOnHour, lightOffHour) is required");
@@ -279,6 +287,17 @@ app.post('/update/:userId', async (req, res) => {
     console.error("Error updating device states:", error);
     res.status(500).send("Error updating device states");
   }
+});
+
+// Endpoint kiểm tra thời gian
+app.get('/check-time', (req, res) => {
+  const systemTime = new Date();
+  const vietnamTime = moment();
+  res.json({
+    systemTime: systemTime.toISOString(),
+    vietnamTime: vietnamTime.toISOString(),
+    vietnamFormatted: vietnamTime.format('YYYY-MM-DD HH:mm:ss')
+  });
 });
 
 // Endpoint để giữ server sống
