@@ -3,12 +3,32 @@ const express = require('express');
 const { MongoClient } = require('mongodb');
 const WebSocket = require('ws');
 const moment = require('moment-timezone');
+const ntpClient = require('ntp-client');
 
-// Thiết lập múi giờ mặc định là Việt Nam
+// Thiết lập múi giờ mặc định
 moment.tz.setDefault('Asia/Ho_Chi_Minh');
 
 const app = express();
 app.use(express.json());
+
+// Đồng bộ thời gian với NTP
+function syncSystemTime() {
+  ntpClient.getNetworkTime("pool.ntp.org", 123, (err, date) => {
+    if (err) {
+      console.error('Failed to sync with NTP:', err);
+      return;
+    }
+    console.log('NTP time:', date.toISOString());
+    console.log('System time:', new Date().toISOString());
+    const timeDiff = Math.abs(new Date().getTime() - date.getTime());
+    if (timeDiff > 60000) {
+      console.warn('System time is off by more than 1 minute! Please check server NTP sync.');
+    }
+  });
+}
+
+syncSystemTime();
+setInterval(syncSystemTime, 3600000);
 
 // Kết nối MongoDB Atlas
 const uri = process.env.MONGODB_URI || "";
@@ -47,11 +67,10 @@ const currentStatsCollection = db.collection('current_stats');
 const thresholdsCollection = db.collection('thresholds');
 const statsCollection = db.collection('stats');
 
-// Log thời gian để debug
-setInterval(() => {
-  console.log('System time:', new Date().toISOString());
-  console.log('Vietnam time:', moment().format('YYYY-MM-DD HH:mm:ss'));
-}, 60000);
+// Log thông tin hệ thống
+console.log('Server timezone:', process.env.TZ || 'Not set');
+console.log('System time (raw):', new Date().toString());
+console.log('System time (ISO):', new Date().toISOString());
 
 // Tạo WebSocket server
 const wss = new WebSocket.Server({ port: 8080 });
@@ -155,7 +174,7 @@ app.post('/write', async (req, res) => {
   }
 });
 
-// API đọc ngưỡng, trạng thái bật/tắt, thời gian hiện tại và thời gian bật/tắt đèn
+// API đọc ngưỡng, trạng thái bật/tắt, thời gian hiện tại
 app.get('/read/:userId', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
@@ -164,9 +183,11 @@ app.get('/read/:userId', async (req, res) => {
     const userId = req.params.userId;
     const thresholds = await thresholdsCollection.findOne({ userId });
 
-    // Lấy thời gian hiện tại theo múi giờ Việt Nam
-    const timestamp = moment();
-    const isoTimestamp = timestamp.toISOString();
+    // Lấy thời gian Việt Nam theo định dạng HH:mm
+    const vietnamTime = moment();
+    const timeFormatted = vietnamTime.format('HH:mm');
+
+    console.log(`Sending currentTime for userId ${userId}: ${timeFormatted}`);
 
     if (!thresholds) {
       const defaultThresholds = {
@@ -198,7 +219,7 @@ app.get('/read/:userId', async (req, res) => {
         lightEnabled: defaultThresholds.lightEnabled,
         lightOnHour: defaultThresholds.lightOnHour,
         lightOffHour: defaultThresholds.lightOffHour,
-        currentTime: isoTimestamp
+        currentTime: timeFormatted
       });
     }
     res.json({
@@ -214,7 +235,7 @@ app.get('/read/:userId', async (req, res) => {
       lightEnabled: thresholds.lightEnabled !== undefined ? thresholds.lightEnabled : true,
       lightOnHour: thresholds.lightOnHour !== undefined ? thresholds.lightOnHour : 9,
       lightOffHour: thresholds.lightOffHour !== undefined ? thresholds.lightOffHour : 21,
-      currentTime: isoTimestamp
+      currentTime: timeFormatted
     });
   } catch (error) {
     console.error("Error reading thresholds:", error);
@@ -222,7 +243,7 @@ app.get('/read/:userId', async (req, res) => {
   }
 });
 
-// API cập nhật trạng thái bật/tắt và thời gian bật/tắt đèn từ app
+// API cập nhật trạng thái bật/tắt và thời gian bật/tắt đèn
 app.post('/update/:userId', async (req, res) => {
   if (!isDbConnected) {
     return res.status(503).send("Database not connected");
@@ -294,7 +315,7 @@ app.get('/check-time', (req, res) => {
   const systemTime = new Date();
   const vietnamTime = moment();
   res.json({
-    systemTime: systemTime.toISOString(),
+    systemTime: vietnamTime.format('YYYY-MM-DD HH:mm:ss'), // Hiển thị giờ Việt Nam
     vietnamTime: vietnamTime.toISOString(),
     vietnamFormatted: vietnamTime.format('YYYY-MM-DD HH:mm:ss')
   });
