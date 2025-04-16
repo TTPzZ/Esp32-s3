@@ -3,32 +3,12 @@ const express = require('express');
 const { MongoClient } = require('mongodb');
 const WebSocket = require('ws');
 const moment = require('moment-timezone');
-const ntpClient = require('ntp-client');
 
 // Thiết lập múi giờ mặc định
 moment.tz.setDefault('Asia/Ho_Chi_Minh');
 
 const app = express();
 app.use(express.json());
-
-// Đồng bộ thời gian với NTP
-function syncSystemTime() {
-  ntpClient.getNetworkTime("pool.ntp.org", 123, (err, date) => {
-    if (err) {
-      console.error('Failed to sync with NTP:', err);
-      return;
-    }
-    console.log('NTP time:', date.toISOString());
-    console.log('System time:', new Date().toISOString());
-    const timeDiff = Math.abs(new Date().getTime() - date.getTime());
-    if (timeDiff > 60000) {
-      console.warn('System time is off by more than 1 minute! Please check server NTP sync.');
-    }
-  });
-}
-
-syncSystemTime();
-setInterval(syncSystemTime, 3600000);
 
 // Kết nối MongoDB Atlas
 const uri = process.env.MONGODB_URI || "";
@@ -315,7 +295,7 @@ app.get('/check-time', (req, res) => {
   const systemTime = new Date();
   const vietnamTime = moment();
   res.json({
-    systemTime: vietnamTime.format('YYYY-MM-DD HH:mm:ss'), // Hiển thị giờ Việt Nam
+    systemTime: vietnamTime.format('YYYY-MM-DD HH:mm:ss'),
     vietnamTime: vietnamTime.toISOString(),
     vietnamFormatted: vietnamTime.format('YYYY-MM-DD HH:mm:ss')
   });
